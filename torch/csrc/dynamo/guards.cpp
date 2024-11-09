@@ -3405,6 +3405,29 @@ class TupleIteratorGetItemAccessor : public GuardAccessor {
   Py_ssize_t _index;
 };
 
+// Gets weakref ref (strong ref) on construction,
+// releases the ref on destruction.
+class WeakrefRAII {
+  PyObject* _obj{nullptr};
+
+ public:
+  WeakrefRAII(PyObject* weakref) {
+    PyWeakref_GetRef(weakref, &_obj); // strong ref
+    if (_obj == nullptr) {
+      _obj = Py_None;
+      Py_INCREF(_obj);
+    }
+  }
+
+  ~WeakrefRAII() {
+    Py_DECREF(_obj);
+  }
+
+  operator PyObject*() const {
+    return _obj;
+  }
+};
+
 /**
  * GlobalWeakRef accessor. Dynamo can insert a weakref object into the frame
  * globals. This accessor reads the globals and then calls the weakref object
@@ -3444,7 +3467,7 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
       return false;
     }
 
-    PyObject* x = PyWeakref_GetObject(weakref); // borrowed ref
+    WeakrefRAII x(weakref);
     return _guard_manager->check_nopybind(x);
   }
 
@@ -3465,7 +3488,7 @@ class GlobalWeakRefGuardAccessor : public GuardAccessor {
           false, std::string("Not a weakref ") + get_source(), 0);
     }
 
-    PyObject* x = PyWeakref_GetObject(weakref); // borrowed ref
+    WeakrefRAII x(weakref);
     return _guard_manager->check_verbose_nopybind(x);
   }
 
@@ -3504,7 +3527,7 @@ class WeakRefCallGuardAccessor : public GuardAccessor {
       return false;
     }
 
-    PyObject* x = PyWeakref_GetObject(obj); // borrowed ref
+    WeakrefRAII x(obj);
     return _guard_manager->check_nopybind(x);
   }
 
@@ -3515,7 +3538,7 @@ class WeakRefCallGuardAccessor : public GuardAccessor {
           false, std::string("Not a weakref obj ") + get_source(), 0);
     }
 
-    PyObject* x = PyWeakref_GetObject(obj); // borrowed ref
+    WeakrefRAII x(obj);
     return _guard_manager->check_verbose_nopybind(x);
   }
 
